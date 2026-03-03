@@ -1,5 +1,7 @@
 // index.js
-require('dotenv').config(); // MUST be first
+require('dotenv').config();
+
+const SHEETS_WEBAPP_URL = process.env.SHEETS_WEBAPP_URL;
 
 const {
   Client,
@@ -21,7 +23,7 @@ console.log("BOT_TOKEN set?", !!BOT_TOKEN);
 console.log("GUILD_ID set?", !!GUILD_ID);
 console.log("CLIENT_ID set?", !!CLIENT_ID);
 
-if (!BOT_TOKEN || !GUILD_ID || !CLIENT_ID) {
+if (!BOT_TOKEN || !GUILD_ID || !CLIENT_ID || !SHEETS_WEBAPP_URL) {
   console.error("Missing env var(s). Check Render > Environment.");
   process.exit(1);
 }
