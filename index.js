@@ -45,6 +45,12 @@ const ITEMS = [
   "Ancient Torque",
   "Valhalla Body",
   "Valhalla Head",
+  "Hofud ",
+  "Animator +1",
+  "Antares Harness",
+  "Valkyrie\'s Fork",
+  "Zahak\'s Mail",
+  "Herald\'s Gaiters",
 ];
 
 const client = new Client({
