@@ -1,8 +1,4 @@
 require('dotenv').config();
-
-console.log("Starting bot...");
-console.log("BOT_TOKEN set?", !!process.env.BOT_TOKEN);
-console.log("GUILD_ID:", process.env.GUILD_ID);
 const { 
   Client, 
   GatewayIntentBits, 
