@@ -48,7 +48,8 @@ const ITEMS = [
   "Antares Harness",
   "Valkyrie's Fork",
   "Zahak's Mail",
-  "Herald's Gaiters"
+  "Herald's Gaiters",
+  "Avalon Breastplate"
 ];
 
 // ===== CLIENT =====
