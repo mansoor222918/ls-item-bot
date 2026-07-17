@@ -29,11 +29,11 @@ const OFFICER_ROLE_IDS = process.env.OFFICER_ROLE_IDS
   : [];
 
 console.log("Starting bot...");
-console.log("BOT_TOKEN set?", !!BOT_TOKEN);
-console.log("CLIENT_ID set?", !!CLIENT_ID);
-console.log("GUILD_ID set?", !!GUILD_ID);
-console.log("SHEETS_WEBAPP_URL set?", !!SHEETS_WEBAPP_URL);
-console.log("OFFICER_CHANNEL_ID set?", !!OFFICER_CHANNEL_ID);
+console.log("BOT_TOKEN set?", Boolean(BOT_TOKEN));
+console.log("CLIENT_ID set?", Boolean(CLIENT_ID));
+console.log("GUILD_ID set?", Boolean(GUILD_ID));
+console.log("SHEETS_WEBAPP_URL set?", Boolean(SHEETS_WEBAPP_URL));
+console.log("OFFICER_CHANNEL_ID set?", Boolean(OFFICER_CHANNEL_ID));
 console.log("OFFICER_ROLE_IDS:", OFFICER_ROLE_IDS.length);
 
 if (
@@ -76,7 +76,7 @@ const client = new Client({
 });
 
 // =====================================================
-// HELPERS
+// HELPER FUNCTIONS
 // =====================================================
 function getDisplayName(member, user) {
   return (
@@ -118,7 +118,7 @@ async function readJsonResponse(response) {
     return JSON.parse(responseText);
   } catch (error) {
     throw new Error(
-      `Google Apps Script did not return valid JSON: ${responseText}`
+      `Google Apps Script returned invalid JSON: ${responseText}`
     );
   }
 }
@@ -145,7 +145,7 @@ async function createInSheets(player, item) {
   return result;
 }
 
-async function updateInSheets(id, status, officer) {
+async function updateInSheets(requestId, status, officer) {
   const response = await fetch(SHEETS_WEBAPP_URL, {
     method: "POST",
     headers: {
@@ -153,7 +153,7 @@ async function updateInSheets(id, status, officer) {
     },
     body: JSON.stringify({
       action: "update",
-      id,
+      id: requestId,
       status,
       officer,
     }),
@@ -168,7 +168,7 @@ async function updateInSheets(id, status, officer) {
   return result;
 }
 
-function findEmbedFieldValue(embed, fieldName) {
+function getEmbedFieldValue(embed, fieldName) {
   const field = embed?.fields?.find(
     (existingField) => existingField.name === fieldName
   );
@@ -177,7 +177,7 @@ function findEmbedFieldValue(embed, fieldName) {
 }
 
 // =====================================================
-// REGISTER /REQUEST COMMAND
+// REGISTER /REQUEST
 // =====================================================
 client.once(Events.ClientReady, async () => {
   try {
@@ -235,7 +235,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         interaction.user
       );
 
-      // Public notification in the channel where /request was used.
+      // Public notification.
       const publicEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
@@ -247,8 +247,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         embeds: [publicEmbed],
       });
 
-      // Private item dropdown.
-      const privateEmbed = new EmbedBuilder()
+      // Private dropdown for the requester.
+      const requestEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
           "Select the item you want to request from the dropdown below."
@@ -286,7 +286,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
 
       await interaction.editReply({
-        embeds: [privateEmbed],
+        embeds: [requestEmbed],
         components: [menuRow],
       });
 
@@ -307,7 +307,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.user.id !== ownerId) {
         await interaction.reply({
           content:
-            "❌ This dropdown is only for the requester.",
+            "❌ This dropdown belongs to another member.",
           ephemeral: true,
         });
 
@@ -378,7 +378,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [],
       });
 
-      // Send approval card to officer channel.
+      // Officer approval channel.
       const officerChannel =
         await interaction.guild.channels.fetch(
           OFFICER_CHANNEL_ID
@@ -386,7 +386,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (!officerChannel?.isTextBased()) {
         throw new Error(
-          "The officer channel is missing or is not a text channel."
+          "Officer channel is missing or is not a text channel."
         );
       }
 
@@ -483,35 +483,52 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ? "Delivered"
           : "Denied";
 
-      // Update Google Sheets and refresh Request Board.
+      const originalEmbed = interaction.message.embeds[0];
+
+      const requestedBy = getEmbedFieldValue(
+        originalEmbed,
+        "Requested By"
+      );
+
+      const fallbackItem = getEmbedFieldValue(
+        originalEmbed,
+        "Item"
+      );
+
+      // First update Google Sheets.
+      // Apps Script will also refresh the Request Board.
       const updateResult = await updateInSheets(
         requestId,
         newStatus,
         officerName
       );
 
-      const oldEmbed = interaction.message.embeds[0];
-
       const itemName =
-        updateResult.item ||
-        findEmbedFieldValue(oldEmbed, "Item");
+        updateResult.item || fallbackItem;
 
-      const requestedBy = findEmbedFieldValue(
-        oldEmbed,
-        "Requested By"
-      );
-
-      // Delete the approval card from Discord.
+      // Only delete the Discord message after the sheet succeeds.
       await interaction.message.delete();
 
-      // Private confirmation visible only to the officer.
-      const confirmationMessage =
+      // Private confirmation for the officer.
+      const confirmationText =
         newStatus === "Delivered"
-          ? `✅ **${itemName}** was marked **Delivered** for **${requestedBy}**.\nThe result was saved in Google Sheets and the request was removed from this channel.`
-          : `❌ **${itemName}** for **${requestedBy}** was marked **Denied**.\nThe result was saved in Google Sheets and the request was removed from this channel.`;
+          ? [
+              `✅ **${itemName}** was marked **Delivered**.`,
+              `Member: **${requestedBy}**`,
+              `Officer: **${officerName}**`,
+              "",
+              "The request was saved in Google Sheets and removed from this Discord channel.",
+            ].join("\n")
+          : [
+              `❌ **${itemName}** was marked **Denied**.`,
+              `Member: **${requestedBy}**`,
+              `Officer: **${officerName}**`,
+              "",
+              "The request was saved in Google Sheets and removed from this Discord channel.",
+            ].join("\n");
 
       await interaction.followUp({
-        content: confirmationMessage,
+        content: confirmationText,
         ephemeral: true,
       });
 
@@ -522,7 +539,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     try {
       const errorMessage =
-        "❌ An error occurred. Please check the Render logs.";
+        "❌ An error occurred. Check the Render logs before trying again.";
 
       if (interaction.deferred || interaction.replied) {
         await interaction.followUp({
@@ -537,7 +554,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     } catch (replyError) {
       console.error(
-        "Failed sending interaction error reply:",
+        "Failed sending the error response:",
         replyError
       );
     }
