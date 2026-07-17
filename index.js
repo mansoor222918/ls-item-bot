@@ -168,24 +168,6 @@ async function updateInSheets(id, status, officer) {
   return result;
 }
 
-function buildNextQueueText(nextQueue) {
-  if (!Array.isArray(nextQueue) || nextQueue.length === 0) {
-    return "No members are currently waiting for this item.";
-  }
-
-  return nextQueue
-    .slice(0, 3)
-    .map((entry, index) => {
-      const memberName =
-        typeof entry === "string"
-          ? entry
-          : entry?.member || "Unknown";
-
-      return `**${index + 1}.** ${memberName}`;
-    })
-    .join("\n");
-}
-
 function findEmbedFieldValue(embed, fieldName) {
   const field = embed?.fields?.find(
     (existingField) => existingField.name === fieldName
@@ -195,7 +177,7 @@ function findEmbedFieldValue(embed, fieldName) {
 }
 
 // =====================================================
-// REGISTER /REQUEST
+// REGISTER /REQUEST COMMAND
 // =====================================================
 client.once(Events.ClientReady, async () => {
   try {
@@ -208,6 +190,7 @@ client.once(Events.ClientReady, async () => {
       .setDescription("Request an item");
 
     const existingCommands = await guild.commands.fetch();
+
     const existingRequestCommand = existingCommands.find(
       (command) => command.name === "request"
     );
@@ -233,7 +216,7 @@ client.once(Events.ClientReady, async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     // =================================================
-    // /request
+    // /request COMMAND
     // =================================================
     if (
       interaction.isChatInputCommand() &&
@@ -252,6 +235,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         interaction.user
       );
 
+      // Public notification in the channel where /request was used.
       const publicEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
@@ -263,6 +247,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         embeds: [publicEmbed],
       });
 
+      // Private item dropdown.
       const privateEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
@@ -355,10 +340,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
       }
 
+      // Private confirmation for requester.
       const confirmationEmbed = new EmbedBuilder()
         .setTitle("✅ Request Submitted")
         .setDescription(
-          "Your request has been saved successfully."
+          "Your request has been saved to Google Sheets."
         )
         .addFields(
           {
@@ -392,6 +378,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [],
       });
 
+      // Send approval card to officer channel.
       const officerChannel =
         await interaction.guild.channels.fetch(
           OFFICER_CHANNEL_ID
@@ -496,6 +483,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ? "Delivered"
           : "Denied";
 
+      // Update Google Sheets and refresh Request Board.
       const updateResult = await updateInSheets(
         requestId,
         newStatus,
@@ -513,68 +501,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         "Requested By"
       );
 
-      const nextQueueText = buildNextQueueText(
-        updateResult.nextQueue
-      );
+      // Delete the approval card from Discord.
+      await interaction.message.delete();
 
-      const completedEmbed =
-        new EmbedBuilder()
-          .setTitle(
-            newStatus === "Delivered"
-              ? "✅ Item Delivered"
-              : "❌ Item Request Denied"
-          )
-          .setDescription(
-            newStatus === "Delivered"
-              ? "The request has been marked as delivered."
-              : "The request has been denied."
-          )
-          .addFields(
-            {
-              name: "Item",
-              value: itemName,
-              inline: true,
-            },
-            {
-              name:
-                newStatus === "Delivered"
-                  ? "Delivered To"
-                  : "Requested By",
-              value: requestedBy,
-              inline: true,
-            },
-            {
-              name:
-                newStatus === "Delivered"
-                  ? "Delivered By"
-                  : "Denied By",
-              value: officerName,
-              inline: false,
-            },
-            {
-              name: "Request ID",
-              value: requestId,
-              inline: false,
-            },
-            {
-              name: "Next in Queue",
-              value: nextQueueText,
-              inline: false,
-            }
-          )
-          .setColor(
-            newStatus === "Delivered"
-              ? 0x57f287
-              : 0xed4245
-          )
-          .setTimestamp()
-          .setFooter({
-            text: "LS Item Request System",
-          });
+      // Private confirmation visible only to the officer.
+      const confirmationMessage =
+        newStatus === "Delivered"
+          ? `✅ **${itemName}** was marked **Delivered** for **${requestedBy}**.\nThe result was saved in Google Sheets and the request was removed from this channel.`
+          : `❌ **${itemName}** for **${requestedBy}** was marked **Denied**.\nThe result was saved in Google Sheets and the request was removed from this channel.`;
 
-      await interaction.editReply({
-        embeds: [completedEmbed],
-        components: [],
+      await interaction.followUp({
+        content: confirmationMessage,
+        ephemeral: true,
       });
 
       return;
