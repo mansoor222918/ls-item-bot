@@ -168,16 +168,8 @@ async function updateInSheets(requestId, status, officer) {
   return result;
 }
 
-function getEmbedFieldValue(embed, fieldName) {
-  const field = embed?.fields?.find(
-    (existingField) => existingField.name === fieldName
-  );
-
-  return field?.value || "Unknown";
-}
-
 // =====================================================
-// REGISTER /REQUEST
+// REGISTER /REQUEST COMMAND
 // =====================================================
 client.once(Events.ClientReady, async () => {
   try {
@@ -235,7 +227,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         interaction.user
       );
 
-      // Public notification.
+      // Public notification in the channel where /request was used.
       const publicEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
@@ -247,7 +239,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         embeds: [publicEmbed],
       });
 
-      // Private dropdown for the requester.
+      // Private dropdown visible only to the requester.
       const requestEmbed = new EmbedBuilder()
         .setTitle("📦 Item Request")
         .setDescription(
@@ -340,7 +332,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
       }
 
-      // Private confirmation for requester.
+      // Private confirmation visible only to requester.
       const confirmationEmbed = new EmbedBuilder()
         .setTitle("✅ Request Submitted")
         .setDescription(
@@ -378,7 +370,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [],
       });
 
-      // Officer approval channel.
+      // Send approval card to officer channel.
       const officerChannel =
         await interaction.guild.channels.fetch(
           OFFICER_CHANNEL_ID
@@ -471,6 +463,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // Acknowledge the click immediately.
       await interaction.deferUpdate();
 
       const officerName = getDisplayName(
@@ -483,55 +476,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ? "Delivered"
           : "Denied";
 
-      const originalEmbed = interaction.message.embeds[0];
-
-      const requestedBy = getEmbedFieldValue(
-        originalEmbed,
-        "Requested By"
-      );
-
-      const fallbackItem = getEmbedFieldValue(
-        originalEmbed,
-        "Item"
-      );
-
-      // First update Google Sheets.
-      // Apps Script will also refresh the Request Board.
-      const updateResult = await updateInSheets(
+      // Update Google Sheets first.
+      // Apps Script also refreshes the Request Board.
+      await updateInSheets(
         requestId,
         newStatus,
         officerName
       );
 
-      const itemName =
-        updateResult.item || fallbackItem;
-
-      // Only delete the Discord message after the sheet succeeds.
+      // Delete the Discord approval message only after
+      // Google Sheets updates successfully.
       await interaction.message.delete();
 
-      // Private confirmation for the officer.
-      const confirmationText =
-        newStatus === "Delivered"
-          ? [
-              `✅ **${itemName}** was marked **Delivered**.`,
-              `Member: **${requestedBy}**`,
-              `Officer: **${officerName}**`,
-              "",
-              "The request was saved in Google Sheets and removed from this Discord channel.",
-            ].join("\n")
-          : [
-              `❌ **${itemName}** was marked **Denied**.`,
-              `Member: **${requestedBy}**`,
-              `Officer: **${officerName}**`,
-              "",
-              "The request was saved in Google Sheets and removed from this Discord channel.",
-            ].join("\n");
-
-      await interaction.followUp({
-        content: confirmationText,
-        ephemeral: true,
-      });
-
+      // No confirmation message and no DM.
       return;
     }
   } catch (error) {
